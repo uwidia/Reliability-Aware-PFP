@@ -290,6 +290,8 @@ On Windows PowerShell:
 ```powershell
 $extra = "cu128" # To run on a cpu instead, change to "cpu"
 
+uv run --extra $extra python scripts/prepare_diamond_hits.py
+
 foreach ($aspect in @("BP", "MF", "CC")) {
   uv run --extra $extra python scripts/build_homology_shards.py `
     --go_aspect $aspect
@@ -300,6 +302,8 @@ On Linux:
 
 ```bash
 EXTRA=cu128 # To run on a cpu instead, change to "cpu"
+
+uv run --extra "$EXTRA" python scripts/prepare_diamond_hits.py
 
 for aspect in BP MF CC; do
   uv run --extra "$EXTRA" python scripts/build_homology_shards.py \
