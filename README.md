@@ -283,7 +283,7 @@ val    data/cleaned_dataset/cleaned_pdb_val.fasta    esm_embeddings/val
 test   data/cleaned_dataset/cleaned_pdb_test.fasta   esm_embeddings/test
 ```
 
-Then run `build_homology_shards.py` without `--splits test`. This builds train, validation, and test homology shards for subsequent prediction and evaluation:
+Then run `prepare_diamond_hits.py` and `build_homology_shards.py` without `--splits test`. This builds train, validation, and test homology shards for subsequent prediction and evaluation:
 
 On Windows PowerShell:
 
