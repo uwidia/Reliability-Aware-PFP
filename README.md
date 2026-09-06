@@ -100,8 +100,8 @@ On Linux, make the downloaded executable runnable:
 chmod +x path_to_diamond_executable
 ```
 
-On Windows, `.exe` files do not use `chmod`. Place `diamond.exe` in the
-project root, unblock it if Windows marked the download as untrusted, and set
+On Windows, place `diamond.exe` in the
+project root and unblock it if Windows marked the download as untrusted, and set
 the executable path for the current PowerShell session:
 
 ```powershell
