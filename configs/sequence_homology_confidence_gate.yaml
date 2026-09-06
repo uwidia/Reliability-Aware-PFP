@@ -2,7 +2,7 @@ batch_size: 16
 num_trials: 20
 trial_epochs: 8
 top_k_params: 5
-patience: 45
+patience: 10
 base_dir_search: runs/sequence_homology_confidence_gate/search
 
 final_epochs: 150
