@@ -92,12 +92,25 @@ Use the same selected extra when running project commands, for example
 `uv run --extra cpu python scripts/get_embeddings.py --help`.
 
 ### 6. DIAMOND Installation
-To run DIAMOND and obtain homology priors, [download the compatible DIAMONDv2.1.24 release](https://github.com/bbuchfink/diamond/releases) for your operating system. 
-NOTE: After download, save Diamond.exe to your project root directory and make it executable. 
+To run DIAMOND and obtain homology priors, [download the compatible DIAMONDv2.1.24 release](https://github.com/bbuchfink/diamond/releases) for your operating system.
+
+On Linux, make the downloaded executable runnable:
 
 ```bash
 chmod +x path_to_diamond_executable
 ```
+
+On Windows, `.exe` files do not use `chmod`. Place `diamond.exe` in the
+project root, unblock it if Windows marked the download as untrusted, and set
+the executable path for the current PowerShell session:
+
+```powershell
+Unblock-File .\diamond.exe
+$env:DIAMOND_EXECUTABLE = (Resolve-Path .\diamond.exe)
+```
+
+On Linux, either put `diamond` on `PATH` or set `DIAMOND_EXECUTABLE` to its
+absolute path before running the scripts.
 
 ---
 
@@ -145,6 +158,14 @@ inference, only the test/query embedding shards and manifest are required.
 
 Choose the same PyTorch extra used during installation. Use `cpu` on a
 CPU-only system or `cu128` on a system with a compatible NVIDIA driver.
+**Warning:** extracting embeddings with the 650M-parameter ESM-2 model on a
+CPU is extremely slow. A compatible NVIDIA GPU is strongly recommended for
+this step.
+
+For a custom dataset, use the *same query FASTA* in this embedding command
+and in Step 2's `prepare_diamond_hits.py --test_dataset` command. The ESM
+manifest and the DIAMOND hit file are matched by protein ID; using different
+FASTA files can produce missing or mismatched homology features.
 
 On Windows PowerShell:
 
@@ -172,18 +193,24 @@ uv run --extra "$EXTRA" python scripts/get_embeddings.py \
 
 ### Step 2: Prepare DIAMOND database and build homology shards
 
-Before this step, ensure you've downloaded a compatible DIAMOND executable and modified it's file permissions. The DIAMOND download process is outlined in the earlier installation step.
+Before this step, ensure you've downloaded a compatible DIAMOND executable and configured access to it as described in the earlier installation step.
 
-The first command builds a DIAMOND database from the training split and generates the shared hit files.
+The first command builds a DIAMOND database from the training split and generates the shared hit files. Existing non-empty DIAMOND hit files (`train_hits.tsv`, `val_hits.tsv`, and `test_hits.tsv`) are reused; pass `--force` to regenerate the database and all hit files.
 
-The `--splits test` convert only yourdataset's hits into the homology priors needed for inference.
+The `--splits test` commands convert only the query dataset's hits into the homology priors needed for inference.
+
+For a custom query FASTA, replace `data/cleaned_dataset/cleaned_pdb_test.fasta`
+in Step 1 with your file and pass that exact same path as `--test_dataset` below.
+If you change the query FASTA after a previous run, include `--force` so that
+`test_hits.tsv` is not reused for the old queries.
 
 On Windows PowerShell:
 
 ```powershell
 $extra = "cu128" # Change to "cpu" if that is your selected environment
 
-uv run --extra $extra python scripts/prepare_diamond_hits.py
+uv run --extra $extra python scripts/prepare_diamond_hits.py `
+  --test_dataset data/cleaned_dataset/cleaned_pdb_test.fasta
 
 uv run --extra $extra python scripts/build_homology_shards.py --go_aspect BP --splits test
 uv run --extra $extra python scripts/build_homology_shards.py --go_aspect MF --splits test
@@ -195,7 +222,8 @@ On Linux:
 ```bash
 EXTRA=cu128 # Change to cpu if that is your selected environment
 
-uv run --extra "$EXTRA" python scripts/prepare_diamond_hits.py
+uv run --extra "$EXTRA" python scripts/prepare_diamond_hits.py \
+  --test_dataset data/cleaned_dataset/cleaned_pdb_test.fasta
 
 uv run --extra "$EXTRA" python scripts/build_homology_shards.py --go_aspect BP --splits test
 uv run --extra "$EXTRA" python scripts/build_homology_shards.py --go_aspect MF --splits test
@@ -439,6 +467,89 @@ for aspect in BP MF CC; do
     --run_type evaluate_only
 done
 ```
+
+### 6. Evaluate held-out test data
+
+After rebuilding the test embeddings and homology shards, evaluate a trained
+neural/gated checkpoint on the held-out test split with `--mode evaluate`. The
+example below evaluates the confidence-gate model for every GO aspect. Replace
+the checkpoint path with `run_000/best_model.pt` when using checkpoints
+produced by the training commands above.
+
+On Windows PowerShell:
+
+```powershell
+$extra = "cu128" # To run on a CPU instead, change to "cpu"
+
+foreach ($aspect in @("BP", "MF", "CC")) {
+  uv run --extra $extra python scripts/inference/run_inference_seq_hom.py `
+    --mode evaluate `
+    --gate confidence `
+    --go_aspect $aspect `
+    --checkpoint "runs/sequence_homology_confidence_gate/final/$aspect/best_model.pt" `
+    --outdir "runs/test_evaluation/sequence_homology_confidence_gate/$aspect"
+}
+```
+
+The homology-only baseline has no checkpoint:
+
+```powershell
+$extra = "cu128" # To run on a CPU instead, change to "cpu"
+
+foreach ($aspect in @("BP", "MF", "CC")) {
+  uv run --extra $extra python scripts/inference/run_inference_hom_only.py `
+    --mode evaluate `
+    --go_aspect $aspect `
+    --outdir "runs/test_evaluation/homology_only/$aspect"
+}
+```
+
+On Linux:
+
+```bash
+EXTRA=cu128 # To run on a CPU instead, change to "cpu"
+
+for aspect in BP MF CC; do
+  uv run --extra "$EXTRA" python scripts/inference/run_inference_seq_hom.py \
+    --mode evaluate \
+    --gate confidence \
+    --go_aspect "$aspect" \
+    --checkpoint "runs/sequence_homology_confidence_gate/final/$aspect/best_model.pt" \
+    --outdir "runs/test_evaluation/sequence_homology_confidence_gate/$aspect"
+
+  uv run --extra "$EXTRA" python scripts/inference/run_inference_hom_only.py \
+    --mode evaluate \
+    --go_aspect "$aspect" \
+    --outdir "runs/test_evaluation/homology_only/$aspect"
+done
+```
+
+Each evaluation output directory contains `metrics.json`. Evaluation mode
+expects the held-out test FASTA, test embedding manifest, and test homology
+shards to describe the same proteins. Supply the corresponding `--test_fasta`,
+`--test_esm_shard_dir`, `--test_manifest_path`, and
+`--test_homology_shard_dir` options if you use non-default locations.
+
+### CAFA-style metrics
+
+The repository evaluates each GO aspect separately and writes `Fmax`, `AUPR`,
+`Smin`, their selected thresholds, precision/recall at Fmax, remaining
+uncertainty (RU), and misinformation (MI) to `metrics.json`. The implemented
+procedure is:
+
+* Predictions and ground-truth annotations are propagated to GO ancestors;
+  terms outside the selected aspect and the aspect root are removed. Proteins
+  with no remaining ground-truth term are excluded.
+* Thresholds from 0.01 to 1.00, inclusive, are evaluated. At each threshold,
+  precision is averaged over proteins that have at least one prediction,
+  whereas recall, RU, and MI are averaged over all evaluated proteins. `Fmax`
+  is the largest resulting F-score.
+* `AUPR` is the trapezoidal area under the threshold-derived precision-recall
+  points after sorting them by recall.
+* `Smin` is the smallest value of `sqrt(RU^2 + MI^2)`. Term information
+  content is calculated from propagated training annotations as
+  `log2(minimum direct-parent count / term count)`; terms not observed in the
+  training annotations have zero contribution to RU and MI.
 
 For strict comparisons, keep the dataset files, `uv.lock`, GO OBO file, annotation TSV, DIAMOND version, random seed, and YAML configuration unchanged. The embedding stage writes `run_metadata.json`, and training writes checkpoints and run metadata beneath `runs/`.
 
