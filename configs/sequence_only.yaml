@@ -18,9 +18,9 @@ search_space:
   learning_rate: [0.0001, 0.0003, 0.001]
   weight_decay: [0.00001, 0.0001, 0.001]
   attn_hidden_dim: [128, 256, 512]
-  attn_dropout: [0.0, 0.1, 0.2]
+  attn_dropout: [0.0, 0.1, 0.2, 0.3]
   head_hidden_dim: [512]
-  head_dropout: [0.0, 0.1, 0.2]
+  head_dropout: [0.0, 0.1, 0.2, 0.3]
   lambda_hier: [0.0, 0.001, 0.01]
   pos_weight_cap: [5.0, 10.0, 20.0]
 
